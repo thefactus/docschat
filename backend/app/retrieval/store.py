@@ -52,12 +52,13 @@ def store_chunks(rows: list[dict]) -> None:
     with get_conn() as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            execute_values(
+            # No deduplication: each ingest call assigns a fresh uuid4 as id, so the same
+        # file uploaded twice creates two separate document_ids with independent chunks.
+        execute_values(
                 cur,
                 """
                 INSERT INTO chunks (id, document_id, filename, page, chunk_index, content, embedding)
                 VALUES %s
-                ON CONFLICT (id) DO NOTHING
                 """,
                 [
                     (

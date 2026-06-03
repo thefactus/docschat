@@ -67,6 +67,12 @@ async def ingest(file: UploadFile = File(...)):
         suffix=suffix,
     )
 
+    if chunk_count == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="No extractable text found. Scanned/image-only PDFs are not supported.",
+        )
+
     log.info("ingest.done", document_id=document_id, chunks=chunk_count)
 
     return IngestResponse(

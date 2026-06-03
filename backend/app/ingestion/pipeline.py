@@ -79,7 +79,7 @@ def _embed(texts: list[str]) -> list[list[float]]:
             model=settings.embedding_model,
             input=texts[i : i + 100],
         )
-        result.extend(item.embedding for item in resp.data)
+        result.extend(item.embedding for item in sorted(resp.data, key=lambda x: x.index))
     return result
 
 
