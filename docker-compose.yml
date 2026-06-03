@@ -1,0 +1,49 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: docschat
+      POSTGRES_PASSWORD: docschat
+      POSTGRES_DB: docschat
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docschat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://docschat:docschat@db:5432/docschat
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+
+  # frontend:  # uncomment when ./frontend exists
+  #   build: ./frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: http://localhost:8000
+  #   depends_on:
+  #     - backend
+  #   develop:
+  #     watch:
+  #       - action: sync
+  #         path: ./frontend
+  #         target: /app
+
+volumes:
+  pgdata:

@@ -1,0 +1,27 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Editor
+.idea/
+.vscode/
+*.swp

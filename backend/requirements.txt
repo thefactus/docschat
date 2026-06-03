@@ -1,0 +1,19 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Document parsing
+pypdf==5.1.0
+
+# Embeddings
+openai==1.57.2
+
+# Vector store + full-text search
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+
+# Utilities
+python-dotenv==1.0.1
+structlog==24.4.0
