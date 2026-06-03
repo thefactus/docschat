@@ -18,6 +18,7 @@ class Chunk:
     chunk_index: int
     content: str
     score: float
+    raw_vec_score: float = 0.0  # pre-normalization cosine similarity; used by generation confidence guardrail
 
     def to_source(self) -> ChunkSource:
         return ChunkSource(
@@ -75,6 +76,7 @@ def retrieve(question: str, document_ids: list[str] | None = None) -> list[Chunk
             chunk_index=r["chunk_index"],
             content=r["content"],
             score=r["score"],
+            raw_vec_score=r["raw_vec_score"],
         )
         for r in fused
     ]

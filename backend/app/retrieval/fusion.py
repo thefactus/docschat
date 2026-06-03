@@ -12,18 +12,30 @@ def fuse(
     Adding raw scores would collapse the FTS signal. Min-max normalization maps each
     arm independently to [0,1] before applying weights.
 
-    Why weighted over RRF: fusion_vector_weight/fusion_fts_weight in config are
-    meaningful tuning knobs — 0.7/0.3 reflects the intuition that semantic similarity
-    carries more signal than keyword overlap for most queries. RRF collapses all scores
-    to rank position, making those config values meaningless. Score magnitude matters
-    here: a chunk at cosine=0.98 should score higher than one at 0.62, not just "rank 1
-    vs rank 2".
+    What min-max preserves: RELATIVE SPACING within each candidate set, not absolute
+    magnitude. The best candidate in each arm always normalizes to 1.0, regardless of
+    its raw score — a query whose top vector hit is cosine=0.98 and one whose top hit
+    is cosine=0.40 both produce a winner at 1.0. The consequence: fused scores are not
+    comparable across separate retrieve() calls (e.g., in the planner), so cross-call
+    merging must sort by raw_vec_score, not fused score.
 
-    Edge case: if all scores in an arm are identical (max == min), every chunk in that
-    arm gets normalized score = 1.0 (all equally relevant; penalizing them would be wrong).
+    Known weakness: a near-uniform arm (e.g., 20 FTS hits with ts_rank 0.050–0.051)
+    gets stretched to the full [0,1] range, amplifying noise into full-weight signal.
+    The hi==lo→1.0 rule has the same effect for a degenerate arm. RRF doesn't have
+    this failure mode. Accepted trade-off: the config knobs remain meaningful and the
+    relative ordering within each arm is preserved.
+
+    Why weighted over RRF: fusion_vector_weight/fusion_fts_weight in config are
+    meaningful tuning knobs — 0.7/0.3 reflects that semantic similarity carries more
+    signal than keyword overlap for most queries. RRF collapses all scores to rank
+    position, making those config values meaningless.
 
     Chunks that appear in only one arm get 0.0 for the missing arm — the arm's weight
     still applies, so a strong vector match with no FTS signal gets vec_weight * norm.
+
+    raw_vec_score: the original (pre-normalization) cosine similarity from the vector
+    arm, carried through for the confidence guardrail in generation. Chunks that only
+    appeared in the FTS arm get raw_vec_score=0.0.
     """
     vec_scores: dict[str, float] = {r["id"]: float(r["score"]) for r in vector_results}
     fts_scores: dict[str, float] = {r["id"]: float(r["score"]) for r in fts_results}
@@ -53,6 +65,10 @@ def fuse(
     top_ids = sorted(fused_scores, key=lambda id_: fused_scores[id_], reverse=True)[:top_k]
 
     return [
-        {**row_by_id[id_], "score": round(fused_scores[id_], 4)}
+        {
+            **row_by_id[id_],
+            "score": round(fused_scores[id_], 4),
+            "raw_vec_score": vec_scores.get(id_, 0.0),
+        }
         for id_ in top_ids
     ]
