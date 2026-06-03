@@ -91,7 +91,7 @@ def documents():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
-    from app.retrieval.pipeline import retrieve
+    from app.retrieval.planner import retrieve_with_planning
     from app.generation.openai import generate
 
     if not request.question.strip():
@@ -100,7 +100,7 @@ async def query(request: QueryRequest):
     t0 = time.perf_counter()
     log.info("query.start", question=request.question[:120])
 
-    chunks = retrieve(request.question, document_ids=request.document_ids)
+    chunks = retrieve_with_planning(request.question, document_ids=request.document_ids)
 
     if not chunks:
         return QueryResponse(
