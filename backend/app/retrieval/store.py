@@ -1,6 +1,7 @@
 import psycopg2
 import structlog
-from psycopg2.extras import RealDictCursor
+from pgvector.psycopg2 import register_vector
+from psycopg2.extras import RealDictCursor, execute_values
 
 from app.config import settings
 from app.models import DocumentInfo
@@ -43,6 +44,35 @@ def init_db() -> None:
             """)
         conn.commit()
     log.info("db.init_done")
+
+
+def store_chunks(rows: list[dict]) -> None:
+    """Insert chunk rows into PostgreSQL. register_vector is called here (not in get_conn)
+    to avoid a chicken-and-egg issue: init_db creates the extension first."""
+    with get_conn() as conn:
+        register_vector(conn)
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                """
+                INSERT INTO chunks (id, document_id, filename, page, chunk_index, content, embedding)
+                VALUES %s
+                ON CONFLICT (id) DO NOTHING
+                """,
+                [
+                    (
+                        r["id"],
+                        r["document_id"],
+                        r["filename"],
+                        r["page"],
+                        r["chunk_index"],
+                        r["content"],
+                        r["embedding"],
+                    )
+                    for r in rows
+                ],
+            )
+        conn.commit()
 
 
 def list_documents() -> list[DocumentInfo]:

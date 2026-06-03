@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     generation_model: str = "gpt-4.1-mini"
     planner_model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
-    chunk_size: int = 400
-    chunk_overlap: int = 80
+    chunk_size: int = 1500
+    chunk_overlap: int = 300
     retrieval_top_k: int = 6
     fusion_vector_weight: float = 0.7
     fusion_fts_weight: float = 0.3
