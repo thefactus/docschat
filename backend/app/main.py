@@ -127,10 +127,13 @@ async def query(request: QueryRequest):
         latency_ms=latency,
     )
 
-    # tokens_used == 0 means the low-confidence guardrail fired — no grounded answer.
-    # Returning sources alongside a refusal is inconsistent: we're saying "I don't know"
-    # while pointing at documents. Return empty sources on refusal.
-    sources = [] if response.tokens_used == 0 else [c.to_source() for c in chunks]
+    # tokens_used == 0: low-confidence guardrail fired — return no sources.
+    # raw_vec_score == 0.0: FTS-only chunk with no vector signal — omit from sources
+    # but keep in generation context (the LLM can still use it, just don't cite it).
+    if response.tokens_used == 0:
+        sources = []
+    else:
+        sources = [c.to_source() for c in chunks if c.raw_vec_score > 0.0]
 
     return QueryResponse(
         answer=response.answer,

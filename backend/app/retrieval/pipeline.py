@@ -21,12 +21,17 @@ class Chunk:
     raw_vec_score: float = 0.0  # pre-norm cosine similarity; generation confidence guardrail
 
     def to_source(self) -> ChunkSource:
+        # Expose raw_vec_score as the user-facing score: it is an absolute cosine
+        # similarity, comparable across planner sub-query calls, and matches the
+        # sort order applied in retrieve_with_planning. The per-call fused score is
+        # only comparable within a single retrieve() call and would disagree with
+        # the ordering, producing a visibly unsorted sources panel.
         return ChunkSource(
             document_id=self.document_id,
             filename=self.filename,
             page=self.page,
             chunk_index=self.chunk_index,
-            score=self.score,
+            score=round(self.raw_vec_score, 4),
         )
 
 
