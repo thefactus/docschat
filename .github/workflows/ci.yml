@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint & compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff==0.8.6
+      - name: Ruff lint
+        run: ruff check backend/
+      - name: Compile check
+        # Imports the app entry point, which transitively imports every module.
+        # Catches syntax errors and broken imports without running the server or
+        # touching a database. This is the zero-cost gate that would have caught
+        # the store.py IndentationError before it reached production.
+        run: |
+          pip install -r backend/requirements.txt
+          cd backend && python -c "import app.main"
+        env:
+          OPENAI_API_KEY: sk-placeholder
+          DATABASE_URL: postgresql://skip:skip@localhost:5432/skip
+
+  test:
+    name: Unit + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Unit tests (pure-function, no DB, no tokens)
+        working-directory: backend
+        run: pytest tests/test_chunking.py tests/test_fusion.py -v
+      - name: Integration tests (real pgvector via testcontainers, no tokens)
+        working-directory: backend
+        run: pytest tests/test_db.py -v
+        env:
+          OPENAI_API_KEY: sk-placeholder
