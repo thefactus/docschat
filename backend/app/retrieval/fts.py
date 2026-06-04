@@ -15,7 +15,7 @@ def fts_search(
     with exact clause names, product names, and acronyms.
 
     An empty tsquery (all stop-words, empty string, etc.) is detected via
-    tsquery_numnode before running the main query; returns [] in that case.
+    numnode before running the main query; returns [] in that case.
     document_ids filtering is done in SQL.
     """
     with get_conn() as conn:
@@ -23,7 +23,7 @@ def fts_search(
             # Guard: websearch_to_tsquery returns an empty tsquery for all-stopword
             # or empty input. Running fts @@ empty_tsquery raises a PostgreSQL error.
             cur.execute(
-                "SELECT tsquery_numnode(websearch_to_tsquery('english', %s)) AS n",
+                "SELECT numnode(websearch_to_tsquery('english', %s)) AS n",
                 (query,),
             )
             if cur.fetchone()["n"] == 0:

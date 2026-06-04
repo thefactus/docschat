@@ -21,10 +21,10 @@ def vector_search(
                 cur.execute(
                     """
                     SELECT id, document_id, filename, page, chunk_index, content,
-                           1 - (embedding <=> %s) AS score
+                           1 - (embedding <=> %s::vector) AS score
                     FROM chunks
                     WHERE document_id = ANY(%s)
-                    ORDER BY embedding <=> %s
+                    ORDER BY embedding <=> %s::vector
                     LIMIT %s
                     """,
                     (query_embedding, document_ids, query_embedding, top_k),
@@ -33,9 +33,9 @@ def vector_search(
                 cur.execute(
                     """
                     SELECT id, document_id, filename, page, chunk_index, content,
-                           1 - (embedding <=> %s) AS score
+                           1 - (embedding <=> %s::vector) AS score
                     FROM chunks
-                    ORDER BY embedding <=> %s
+                    ORDER BY embedding <=> %s::vector
                     LIMIT %s
                     """,
                     (query_embedding, query_embedding, top_k),
