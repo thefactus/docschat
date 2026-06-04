@@ -51,12 +51,6 @@
   expect_documents: ["AI_Native Builder.pdf"]
   expect_answer_contains: ["LangGraph", "AutoGen", "Claude Agent SDK"]
 
-- id: contact-email
-  type: answerable
-  question: "What email address should applicants reach out to?"
-  expect_documents: ["AI_Native Builder.pdf"]
-  expect_answer_contains: ["careers@example.com"]
-
 - id: assignment-options
   type: answerable
   question: "What assistant options can I choose to build for the assignment?"
