@@ -121,9 +121,14 @@ async def query(request: QueryRequest):
         latency_ms=latency,
     )
 
+    # tokens_used == 0 means the low-confidence guardrail fired — no grounded answer.
+    # Returning sources alongside a refusal is inconsistent: we're saying "I don't know"
+    # while pointing at documents. Return empty sources on refusal.
+    sources = [] if response.tokens_used == 0 else [c.to_source() for c in chunks]
+
     return QueryResponse(
         answer=response.answer,
-        sources=[c.to_source() for c in chunks],
+        sources=sources,
         tokens_used=response.tokens_used,
         latency_ms=latency,
     )
