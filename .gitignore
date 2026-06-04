@@ -25,3 +25,6 @@ out/
 .idea/
 .vscode/
 *.swp
+
+# Eval artifacts
+backend/evals/last_run.json

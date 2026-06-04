@@ -1,0 +1,90 @@
+# DocChat golden evaluation set
+# Built from the indexed corpus: sample.txt (leave policy), AI_Native Builder.pdf, Assignment v3.pdf
+#
+# type: answerable | refuse
+# expect_documents: filenames that SHOULD appear in sources (retrieval hit)
+# expect_pages: optional page(s) that should be cited; omit for .txt files (no page provenance)
+# expect_answer_contains: lexical facts for Tier A proxy (ALL strings must appear, case-insensitive)
+# scope: optional list of filenames to restrict retrieval (scoping test)
+
+- id: leave-annual
+  type: answerable
+  question: "How many days of paid annual leave do employees get per year?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["25"]
+
+- id: leave-carryover
+  type: answerable
+  question: "How many unused leave days can be carried over to the next year?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["5"]
+
+- id: sick-leave
+  type: answerable
+  question: "How many days of paid sick leave are provided annually?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["10"]
+
+- id: remote-work
+  type: answerable
+  question: "How many days per week can full-time employees work remotely?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["three", "3"]
+
+- id: vector-dbs
+  type: answerable
+  question: "Which vector databases does the role expect experience with?"
+  expect_documents: ["AI_Native Builder.pdf"]
+  expect_pages: [2]
+  expect_answer_contains: ["pgvector", "Pinecone", "Chroma", "Weaviate"]
+
+- id: hybrid-retrieval
+  type: answerable
+  question: "What hybrid retrieval technologies are mentioned for the role?"
+  expect_documents: ["AI_Native Builder.pdf"]
+  expect_pages: [2]
+  expect_answer_contains: ["BM25", "Elasticsearch"]
+
+- id: agent-frameworks
+  type: answerable
+  question: "Which agent orchestration frameworks should a candidate know?"
+  expect_documents: ["AI_Native Builder.pdf"]
+  expect_answer_contains: ["LangGraph", "AutoGen", "Claude Agent SDK"]
+
+- id: contact-email
+  type: answerable
+  question: "What email address should applicants reach out to?"
+  expect_documents: ["AI_Native Builder.pdf"]
+  expect_answer_contains: ["careers@example.com"]
+
+- id: assignment-options
+  type: answerable
+  question: "What assistant options can I choose to build for the assignment?"
+  expect_documents: ["Assignment v3.pdf"]
+  expect_pages: [1]
+  expect_answer_contains: ["Chat With Your Docs", "Meeting Intelligence", "Career Intelligence"]
+
+- id: assignment-deliverables
+  type: answerable
+  question: "What do I need to submit for the assignment?"
+  expect_documents: ["Assignment v3.pdf"]
+  expect_answer_contains: ["GitHub", "README"]
+
+- id: scoped-options-only
+  type: answerable
+  question: "What are the build options?"
+  scope: ["Assignment v3.pdf"]
+  expect_documents: ["Assignment v3.pdf"]
+  expect_answer_contains: ["Code Documentation Assistant"]
+
+- id: offtopic-gdp
+  type: refuse
+  question: "What was the GDP of Brazil in 2019?"
+
+- id: offtopic-helium
+  type: refuse
+  question: "What is the boiling point of helium?"
+
+- id: offtopic-recipe
+  type: refuse
+  question: "Give me a recipe for carbonara."

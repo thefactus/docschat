@@ -17,3 +17,4 @@ pgvector==0.3.6
 # Utilities
 python-dotenv==1.0.1
 structlog==24.4.0
+pyyaml==6.0.2
