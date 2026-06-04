@@ -54,7 +54,7 @@ export function ChatPanel({ documents, selectedDocIds }: Props) {
                 return {
                   ...msg,
                   streaming: false,
-                  content: newTrace.answer,
+                  content: event.data.answer,
                   sources: event.data.sources,
                   tokensUsed: event.data.tokens_used,
                   latencyMs: event.data.latency_ms,

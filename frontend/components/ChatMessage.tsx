@@ -33,7 +33,7 @@ export function ChatMessage({ message }: { message: Message }) {
                          bg-white text-gray-800 border border-gray-200 shadow-sm"
             >
               <p className="whitespace-pre-wrap">
-                {message.trace.answer}
+                {message.trace.answer || message.content}
                 {isStreaming && message.trace.answer && (
                   <span className="inline-block w-0.5 h-3.5 bg-gray-500 ml-0.5 animate-cursor" />
                 )}
