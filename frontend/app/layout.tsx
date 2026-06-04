@@ -4,6 +4,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'DocChat',
   description: 'Ask questions about your documents using AI',
+  icons: { icon: '/favicon.svg', shortcut: '/favicon.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

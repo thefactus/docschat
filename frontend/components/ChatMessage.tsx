@@ -76,7 +76,7 @@ export function ChatMessage({ message }: { message: Message }) {
                       <span className="text-gray-500 shrink-0">p.{src.page}</span>
                     )}
                     <span className="text-gray-400 shrink-0 ml-auto">
-                      {(src.score * 100).toFixed(0)}% match
+                      {src.score.toFixed(2)} relevance
                     </span>
                   </div>
                 ))}
