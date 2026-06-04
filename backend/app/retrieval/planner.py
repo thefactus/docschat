@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 
 import structlog
 from openai import OpenAI
@@ -8,6 +9,13 @@ from app.config import settings
 from app.retrieval.pipeline import Chunk, retrieve
 
 log = structlog.get_logger()
+
+
+@dataclass
+class PlanDetails:
+    queries: list[str]
+    decomposed: bool
+    reason: str
 
 _SYSTEM_PROMPT = """\
 You are a query planning component for a document-grounded RAG system.
@@ -41,12 +49,11 @@ class _PlannerOutput(BaseModel):
     reason: str
 
 
-def _plan(question: str) -> list[str]:
-    """Call the planner LLM to decompose or refine the question.
+def plan_details(question: str) -> PlanDetails:
+    """Call the planner LLM and return full plan metadata (queries, decomposed flag, reason).
 
-    Returns a list of retrieval query strings (max 4).
-    Falls back to [question] on any failure — LLM error, invalid JSON, schema
-    mismatch, or empty queries list. Fallback is logged for observability.
+    Falls back to a single-query plan on any failure — LLM error, invalid JSON,
+    schema mismatch, or empty queries list. Fallback is logged for observability.
     """
     try:
         client = OpenAI(api_key=settings.openai_api_key)
@@ -61,15 +68,19 @@ def _plan(question: str) -> list[str]:
         )
         content = response.choices[0].message.content or "{}"
         parsed = _PlannerOutput.model_validate(json.loads(content))
-        # Enforce max 4 in code regardless of what the prompt says
         queries = [q.strip() for q in parsed.queries if q.strip()][:4]
         if not queries:
             queries = [question]
+        decomposed = len(queries) > 1 or parsed.reason.startswith("decomposed")
         log.info("planner.done", reason=parsed.reason, n_queries=len(queries))
-        return queries
+        return PlanDetails(queries=queries, decomposed=decomposed, reason=parsed.reason)
     except (ValidationError, json.JSONDecodeError, Exception) as exc:
         log.warning("planner.fallback", error=str(exc))
-        return [question]
+        return PlanDetails(queries=[question], decomposed=False, reason="fallback")
+
+
+def _plan(question: str) -> list[str]:
+    return plan_details(question).queries
 
 
 def retrieve_with_planning(

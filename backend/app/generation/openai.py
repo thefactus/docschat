@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 import structlog
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.config import settings
 
@@ -82,3 +82,42 @@ async def generate(question: str, chunks: list) -> GenerationResult:
     )
 
     return GenerationResult(answer=answer, tokens_used=tokens_used)
+
+
+async def generate_stream(question: str, chunks: list):
+    """Streaming generation — async generator yielding token dicts then a done dict.
+
+    Yields: {"type": "token", "text": str}  (one per OpenAI delta)
+            {"type": "done", "tokens_used": int}
+
+    Caller is responsible for the guardrail check before calling this function.
+    """
+    context_parts = []
+    for i, chunk in enumerate(chunks, 1):
+        page_ref = f", p.{chunk.page}" if chunk.page is not None else ""
+        context_parts.append(f"[{i}] {chunk.filename}{page_ref}:\n{chunk.content}")
+    context = "\n\n---\n\n".join(context_parts)
+
+    user_message = f"Document excerpts:\n\n{context}\n\nQuestion: {question}"
+
+    async_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    tokens_used = 0
+
+    stream = await async_client.chat.completions.create(
+        model=settings.generation_model,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0.0,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+
+    async for chunk_resp in stream:
+        if chunk_resp.choices and chunk_resp.choices[0].delta.content:
+            yield {"type": "token", "text": chunk_resp.choices[0].delta.content}
+        if chunk_resp.usage:
+            tokens_used = chunk_resp.usage.total_tokens
+
+    yield {"type": "done", "tokens_used": tokens_used}

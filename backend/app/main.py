@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.models import (
@@ -140,4 +141,21 @@ async def query(request: QueryRequest):
         sources=sources,
         tokens_used=response.tokens_used,
         latency_ms=latency,
+    )
+
+
+@app.post("/query/stream")
+async def query_stream_endpoint(request: QueryRequest):
+    from app.retrieval.stream import query_stream
+
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    return StreamingResponse(
+        query_stream(request.question, request.document_ids),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

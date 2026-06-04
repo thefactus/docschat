@@ -10,3 +10,40 @@ html,
 body {
   height: 100%;
 }
+
+/* Pipeline diagram animations */
+@keyframes flow-dot {
+  from { left: -12px; }
+  to { left: 100%; }
+}
+
+@keyframes node-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 5px rgba(99, 102, 241, 0); }
+}
+
+@keyframes fade-slide-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-flow-dot {
+  animation: flow-dot 0.75s linear infinite;
+}
+
+.animate-node-pulse {
+  animation: node-pulse 1.2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fade-slide-in 0.2s ease-out forwards;
+}
+
+.animate-cursor {
+  animation: cursor-blink 1s step-end infinite;
+}

@@ -12,6 +12,8 @@ export interface Source {
   score: number
 }
 
+import type { TraceState } from './sse-types'
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -20,6 +22,8 @@ export interface Message {
   tokensUsed?: number
   latencyMs?: number
   error?: boolean
+  streaming?: boolean
+  trace?: TraceState
 }
 
 export type UploadStatus =

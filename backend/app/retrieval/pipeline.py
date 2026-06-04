@@ -85,3 +85,61 @@ def retrieve(question: str, document_ids: list[str] | None = None) -> list[Chunk
         )
         for r in fused
     ]
+
+
+@dataclass
+class RetrievalDetail:
+    chunks: list[Chunk]
+    vec_hits: int
+    fts_hits: int
+    fused_count: int
+
+
+def retrieve_detailed(
+    question: str,
+    document_ids: list[str] | None = None,
+) -> RetrievalDetail:
+    """Like retrieve() but also returns per-arm hit counts for the stream trace.
+
+    Does not modify retrieve() — all existing callers are unaffected.
+    """
+    from app.retrieval.fts import fts_search
+    from app.retrieval.fusion import fuse
+    from app.retrieval.vector import vector_search
+
+    client = OpenAI(api_key=settings.openai_api_key)
+    resp = client.embeddings.create(model=settings.embedding_model, input=[question])
+    query_embedding = sorted(resp.data, key=lambda x: x.index)[0].embedding
+
+    fetch_k = max(settings.retrieval_top_k * 3, 20)
+    vec_results = vector_search(query_embedding, document_ids, fetch_k)
+    fts_results = fts_search(question, document_ids, fetch_k)
+
+    fused = fuse(
+        vec_results,
+        fts_results,
+        settings.retrieval_top_k,
+        settings.fusion_vector_weight,
+        settings.fusion_fts_weight,
+    )
+
+    chunks = [
+        Chunk(
+            id=r["id"],
+            document_id=r["document_id"],
+            filename=r["filename"],
+            page=r["page"],
+            chunk_index=r["chunk_index"],
+            content=r["content"],
+            score=r["score"],
+            raw_vec_score=r["raw_vec_score"],
+        )
+        for r in fused
+    ]
+
+    return RetrievalDetail(
+        chunks=chunks,
+        vec_hits=len(vec_results),
+        fts_hits=len(fts_results),
+        fused_count=len(fused),
+    )
