@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     fusion_vector_weight: float = 0.7
     fusion_fts_weight: float = 0.3
     max_upload_mb: int = 20
+    low_confidence_threshold: float = 0.20
 
 
 settings = Settings()

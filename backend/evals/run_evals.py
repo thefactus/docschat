@@ -107,19 +107,19 @@ def config_override(
     vec_weight: float | None = None,
     fts_weight: float | None = None,
 ) -> Generator[None, None, None]:
-    old_t = _gen_mod._LOW_CONFIDENCE_THRESHOLD
+    old_t = settings.low_confidence_threshold
     old_v = settings.fusion_vector_weight
     old_f = settings.fusion_fts_weight
     try:
         if threshold is not None:
-            _gen_mod._LOW_CONFIDENCE_THRESHOLD = threshold
+            settings.low_confidence_threshold = threshold
         if vec_weight is not None:
             settings.fusion_vector_weight = vec_weight
         if fts_weight is not None:
             settings.fusion_fts_weight = fts_weight
         yield
     finally:
-        _gen_mod._LOW_CONFIDENCE_THRESHOLD = old_t
+        settings.low_confidence_threshold = old_t
         settings.fusion_vector_weight = old_v
         settings.fusion_fts_weight = old_f
 
@@ -407,7 +407,7 @@ def _print_score_distribution(results: list[ItemResult]) -> None:
     off_max = max(refuse_top)
     ans_min = min(answerable_top)
     ans_med = _median(answerable_top)
-    threshold = _gen_mod._LOW_CONFIDENCE_THRESHOLD
+    threshold = settings.low_confidence_threshold
     gap = ans_min - off_max
 
     print(f"\nScore distribution  [guardrail threshold: {threshold:.2f}]")
@@ -513,7 +513,7 @@ async def run_standard(items: list[dict], judge: bool) -> None:
             "top_k": settings.retrieval_top_k,
             "fusion_vector_weight": settings.fusion_vector_weight,
             "fusion_fts_weight": settings.fusion_fts_weight,
-            "low_confidence_threshold": _gen_mod._LOW_CONFIDENCE_THRESHOLD,
+            "low_confidence_threshold": settings.low_confidence_threshold,
         },
         "metrics": metrics,
         "results": [asdict(r) for r in results],

@@ -326,3 +326,31 @@ class TestComputeMetrics:
         assert m["answer_match"]["mean"] == 0.0
         assert m["answer_match"]["n"] == 0
         assert m["retrieval_hit_rate"]["rate"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Threshold is a config knob, not a module constant
+# ---------------------------------------------------------------------------
+
+class TestThresholdFromConfig:
+    def test_module_has_no_hardcoded_threshold_constant(self):
+        """_LOW_CONFIDENCE_THRESHOLD must not exist as a module attribute.
+
+        Moving it to settings.low_confidence_threshold makes it a real tunable
+        knob (env var LOW_CONFIDENCE_THRESHOLD). If this test fails, the constant
+        was re-introduced and generate() may not respect the configured value.
+        """
+        import app.generation.openai as gen_mod
+
+        assert not hasattr(gen_mod, "_LOW_CONFIDENCE_THRESHOLD"), (
+            "Threshold must come from settings.low_confidence_threshold, "
+            "not a hardcoded module constant"
+        )
+
+    def test_settings_default_is_0_20(self):
+        """Default threshold 0.20 is backed by the live sweep:
+        off-topic max=0.10, answerable floor=0.31, 0.20 centres the gap.
+        """
+        from app.config import settings
+
+        assert settings.low_confidence_threshold == 0.20

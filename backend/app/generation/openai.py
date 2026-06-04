@@ -7,11 +7,10 @@ from app.config import settings
 
 log = structlog.get_logger()
 
-# Chunks whose best raw cosine similarity (pre-normalization) is below this
-# threshold are too semantically distant to ground a reliable answer.
-# Checked against raw_vec_score, not the normalized fused score — the fused
-# score always peaks near 1.0 after normalization and is useless as a gate.
-_LOW_CONFIDENCE_THRESHOLD = 0.30
+# The low_confidence_threshold lives in app.config.Settings so it is a real
+# tunable knob (env var LOW_CONFIDENCE_THRESHOLD, default 0.20). It is checked
+# against raw_vec_score (pre-normalization cosine), not the fused score —
+# the fused score always peaks near 1.0 and is useless as a gate.
 
 _SYSTEM_PROMPT = """\
 You are a document assistant. Answer questions using ONLY the document excerpts provided.
@@ -40,11 +39,11 @@ async def generate(question: str, chunks: list) -> GenerationResult:
     """
     max_raw = max((c.raw_vec_score for c in chunks), default=0.0)
 
-    if max_raw < _LOW_CONFIDENCE_THRESHOLD:
+    if max_raw < settings.low_confidence_threshold:
         log.info(
             "generation.low_confidence",
             max_raw_vec_score=round(max_raw, 3),
-            threshold=_LOW_CONFIDENCE_THRESHOLD,
+            threshold=settings.low_confidence_threshold,
         )
         return GenerationResult(
             answer=(
