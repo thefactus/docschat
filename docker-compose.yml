@@ -31,19 +31,14 @@ services:
           path: ./backend
           target: /app
 
-  # frontend:  # uncomment when ./frontend exists
-  #   build: ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NEXT_PUBLIC_API_URL: http://localhost:8000
-  #   depends_on:
-  #     - backend
-  #   develop:
-  #     watch:
-  #       - action: sync
-  #         path: ./frontend
-  #         target: /app
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
 
 volumes:
   pgdata:
