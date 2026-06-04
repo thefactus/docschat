@@ -103,7 +103,9 @@ class TestVectorSearch:
         by_index = {r["chunk_index"]: r["score"] for r in results}
         assert by_index[0] == pytest.approx(1.0, abs=1e-4)
 
-    def test_document_id_filter_excludes_others(self, seeded_chunks: list[dict], db_url: str) -> None:
+    def test_document_id_filter_excludes_others(
+        self, seeded_chunks: list[dict], db_url: str
+    ) -> None:
         from app.retrieval.vector import vector_search
 
         results = vector_search(_fake_embedding(), document_ids=["nonexistent-doc"], top_k=10)
@@ -122,21 +124,27 @@ class TestVectorSearch:
 
 
 class TestFtsSearch:
-    def test_keyword_match_returns_correct_chunk(self, seeded_chunks: list[dict], db_url: str) -> None:
+    def test_keyword_match_returns_correct_chunk(
+        self, seeded_chunks: list[dict], db_url: str
+    ) -> None:
         from app.retrieval.fts import fts_search
 
         results = fts_search("annual leave", document_ids=None, top_k=10)
         assert len(results) >= 1
         assert any("annual leave" in r["content"] for r in results)
 
-    def test_stopword_only_query_returns_empty(self, seeded_chunks: list[dict], db_url: str) -> None:
+    def test_stopword_only_query_returns_empty(
+        self, seeded_chunks: list[dict], db_url: str
+    ) -> None:
         """numnode guard: all-stopword tsquery must not raise, must return []."""
         from app.retrieval.fts import fts_search
 
         # "the" is an English stopword; websearch_to_tsquery returns empty tsquery.
         assert fts_search("the", document_ids=None, top_k=10) == []
 
-    def test_document_id_filter_excludes_others(self, seeded_chunks: list[dict], db_url: str) -> None:
+    def test_document_id_filter_excludes_others(
+        self, seeded_chunks: list[dict], db_url: str
+    ) -> None:
         from app.retrieval.fts import fts_search
 
         assert fts_search("leave", document_ids=["nonexistent-doc"], top_k=10) == []

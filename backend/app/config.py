@@ -1,7 +1,9 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
     openai_api_key: str | None = None
     database_url: str = "postgresql://docschat:docschat@db:5432/docschat"
     generation_model: str = "gpt-4.1-mini"
@@ -13,9 +15,6 @@ class Settings(BaseSettings):
     fusion_vector_weight: float = 0.7
     fusion_fts_weight: float = 0.3
     max_upload_mb: int = 20
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

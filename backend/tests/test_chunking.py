@@ -4,11 +4,9 @@ All assertions use the live settings values (chunk_size=1500, chunk_overlap=300)
 so they stay in sync with the config.
 """
 
-import pytest
 
 from app.config import settings
 from app.ingestion.pipeline import _parse, _split
-
 
 # ---------------------------------------------------------------------------
 # _split
@@ -53,7 +51,10 @@ def test_overlap_carries_tail_of_previous_chunk():
 
 def test_tiny_fragments_are_dropped():
     # Fragments <= 30 chars are filtered by _split.
-    text = "Hi.\n\nHello.\n\nThis paragraph is definitely long enough to survive the minimum length filter."
+    text = (
+        "Hi.\n\nHello.\n\n"
+        "This paragraph is definitely long enough to survive the minimum length filter."
+    )
     chunks = _split(text)
     for chunk in chunks:
         assert len(chunk) > 30, f"Short fragment leaked through: {repr(chunk)}"

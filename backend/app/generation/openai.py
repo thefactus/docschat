@@ -47,7 +47,10 @@ async def generate(question: str, chunks: list) -> GenerationResult:
             threshold=_LOW_CONFIDENCE_THRESHOLD,
         )
         return GenerationResult(
-            answer="I don't have enough information in the uploaded documents to answer this question.",
+            answer=(
+                "I don't have enough information in the uploaded documents"
+                " to answer this question."
+            ),
             tokens_used=0,
         )
 

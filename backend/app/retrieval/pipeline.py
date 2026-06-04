@@ -18,7 +18,7 @@ class Chunk:
     chunk_index: int
     content: str
     score: float
-    raw_vec_score: float = 0.0  # pre-normalization cosine similarity; used by generation confidence guardrail
+    raw_vec_score: float = 0.0  # pre-norm cosine similarity; generation confidence guardrail
 
     def to_source(self) -> ChunkSource:
         return ChunkSource(

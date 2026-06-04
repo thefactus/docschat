@@ -55,7 +55,10 @@ async def ingest(file: UploadFile = File(...)):
 
     max_bytes = settings.max_upload_mb * 1024 * 1024
     if len(content) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"File exceeds {settings.max_upload_mb}MB limit")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {settings.max_upload_mb}MB limit",
+        )
 
     document_id = str(uuid.uuid4())
     log.info("ingest.start", document_id=document_id, filename=filename, size=len(content))
@@ -91,8 +94,8 @@ def documents():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
-    from app.retrieval.planner import retrieve_with_planning
     from app.generation.openai import generate
+    from app.retrieval.planner import retrieve_with_planning
 
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -104,7 +107,10 @@ async def query(request: QueryRequest):
 
     if not chunks:
         return QueryResponse(
-            answer="I don't have enough information in the uploaded documents to answer this question.",
+            answer=(
+                "I don't have enough information in the uploaded documents"
+                " to answer this question."
+            ),
             sources=[],
             tokens_used=0,
             latency_ms=round((time.perf_counter() - t0) * 1000, 1),

@@ -27,7 +27,8 @@ def init_db() -> None:
                     chunk_index INTEGER NOT NULL,
                     content     TEXT NOT NULL,
                     embedding   vector(1536),
-                    fts         tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
+                    fts         tsvector GENERATED ALWAYS AS
+                                    (to_tsvector('english', content)) STORED
                 )
             """)
             cur.execute("""
@@ -57,7 +58,8 @@ def store_chunks(rows: list[dict]) -> None:
             execute_values(
                 cur,
                 """
-                INSERT INTO chunks (id, document_id, filename, page, chunk_index, content, embedding)
+                INSERT INTO chunks
+                    (id, document_id, filename, page, chunk_index, content, embedding)
                 VALUES %s
                 """,
                 [
