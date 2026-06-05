@@ -5,6 +5,7 @@ import { ChatMessage } from '@/components/ChatMessage'
 import { sendQuery } from '@/lib/api'
 import { activeDriver } from '@/lib/trace-stream'
 import { initialTraceState, reduceTraceEvent } from '@/lib/sse-types'
+import type { HistoryMessage } from '@/lib/api'
 import type { Document, Message } from '@/lib/types'
 
 interface Props {
@@ -20,14 +21,19 @@ export function ChatPanel({ documents, selectedDocIds }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<(() => void) | null>(null)
+  const hasDocuments = documents.length > 0
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
+  useEffect(() => {
+    if (hasDocuments) textareaRef.current?.focus()
+  }, [hasDocuments])
+
   // ── Streaming submit (pipeline view ON) ─────────────────────────────
   const submitStream = useCallback(
-    (question: string, scope: string[] | null) => {
+    (question: string, scope: string[] | null, history: HistoryMessage[]) => {
       const msgId = crypto.randomUUID()
 
       setMessages((m) => [
@@ -44,6 +50,7 @@ export function ChatPanel({ documents, selectedDocIds }: Props) {
       const { abort } = activeDriver(
         question,
         scope,
+        history,
         (event) => {
           setMessages((m) =>
             m.map((msg) => {
@@ -109,9 +116,9 @@ export function ChatPanel({ documents, selectedDocIds }: Props) {
 
   // ── Plain submit (pipeline view OFF) ────────────────────────────────
   const submitPlain = useCallback(
-    async (question: string, scope: string[] | null) => {
+    async (question: string, scope: string[] | null, history: HistoryMessage[]) => {
       try {
-        const res = await sendQuery(question, scope)
+        const res = await sendQuery(question, scope, history)
         setMessages((m) => [
           ...m,
           {
@@ -153,16 +160,19 @@ export function ChatPanel({ documents, selectedDocIds }: Props) {
     setIsLoading(true)
 
     const scope = selectedDocIds.length > 0 ? selectedDocIds : null
+    const history: HistoryMessage[] = messages
+      .filter((m) => !m.streaming && !m.error && m.content)
+      .slice(-6)
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
     if (pipelineEnabled) {
-      submitStream(question, scope)
+      submitStream(question, scope, history)
     } else {
-      await submitPlain(question, scope)
+      await submitPlain(question, scope, history)
       textareaRef.current?.focus()
     }
-  }, [input, isLoading, selectedDocIds, pipelineEnabled, submitStream, submitPlain])
+  }, [input, isLoading, selectedDocIds, pipelineEnabled, submitStream, submitPlain, messages])
 
-  const hasDocuments = documents.length > 0
   const isEmpty = messages.length === 0
 
   return (

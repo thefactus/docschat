@@ -3,6 +3,9 @@ import type { Source } from './types'
 // ── SSE event payloads ────────────────────────────────────────────────────
 
 export interface PlannerData {
+  intent: 'greeting' | 'meta' | 'doc_question'
+  standalone_query: string
+  rewritten: boolean
   decomposed: boolean
   sub_queries: string[]
   reason: string
@@ -35,6 +38,7 @@ export interface DoneData {
   sources: Source[]
   tokens_used: number
   latency_ms: number
+  intent?: string
 }
 
 export type ParsedSSEEvent =
@@ -58,7 +62,7 @@ export type PipelineNodeId =
   | 'generation'
   | 'answer'
 
-export type NodeState = 'idle' | 'active' | 'done' | 'failed' | 'refused'
+export type NodeState = 'idle' | 'active' | 'done' | 'failed' | 'refused' | 'skipped'
 
 // ── Trace state ────────────────────────────────────────────────────────────
 
@@ -105,12 +109,27 @@ export function reduceTraceEvent(state: TraceState, event: ParsedSSEEvent): Trac
     case 'planner': {
       const d = event.data
       const n = d.sub_queries.length
-      const logLine = d.decomposed
+      const shortCircuit = d.intent === 'greeting' || d.intent === 'meta'
+      const logLine = shortCircuit
+        ? `Planner → ${d.intent} (short-circuit)`
+        : d.rewritten
+        ? `Planner → rewrote: ${d.standalone_query}`
+        : d.decomposed
         ? `Planner → ${n} sub-queries (decomposed)`
         : `Planner → single query`
       return {
         ...state,
-        nodes: { ...state.nodes, planner: 'done', retrieval: 'active' },
+        nodes: shortCircuit
+          ? {
+              ...state.nodes,
+              planner: 'done',
+              retrieval: 'skipped',
+              fusion: 'skipped',
+              guardrail: 'skipped',
+              generation: 'skipped',
+              answer: 'active',
+            }
+          : { ...state.nodes, planner: 'done', retrieval: 'active' },
         planner: d,
         log: [...state.log, logLine],
       }
@@ -147,7 +166,7 @@ export function reduceTraceEvent(state: TraceState, event: ParsedSSEEvent): Trac
         nodes: {
           ...state.nodes,
           guardrail: guardrailState,
-          generation: d.decision === 'proceed' ? 'active' : 'idle',
+          generation: d.decision === 'proceed' ? 'active' : 'skipped',
         },
         guardrail: d,
         log: [...state.log, logLine],
@@ -176,7 +195,11 @@ export function reduceTraceEvent(state: TraceState, event: ParsedSSEEvent): Trac
       const logLine = `Done in ${(d.latency_ms / 1000).toFixed(1)}s`
       return {
         ...state,
-        nodes: { ...state.nodes, generation: 'done', answer: 'done' },
+        nodes: {
+          ...state.nodes,
+          generation: state.nodes.generation === 'skipped' ? 'skipped' : 'done',
+          answer: 'done',
+        },
         done: d,
         log: [...state.log, logLine],
       }

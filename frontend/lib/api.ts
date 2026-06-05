@@ -15,6 +15,12 @@ export interface QueryResponse {
   sources: Source[]
   tokens_used: number
   latency_ms: number
+  intent?: string
+}
+
+export interface HistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -42,6 +48,7 @@ export async function listDocuments(): Promise<Document[]> {
 export async function sendQuery(
   question: string,
   documentIds: string[] | null,
+  history?: HistoryMessage[],
 ): Promise<QueryResponse> {
   const res = await fetch(`${API_URL}/query`, {
     method: 'POST',
@@ -49,6 +56,7 @@ export async function sendQuery(
     body: JSON.stringify({
       question,
       document_ids: documentIds?.length ? documentIds : null,
+      history: history ?? [],
     }),
   })
   return handleResponse<QueryResponse>(res)

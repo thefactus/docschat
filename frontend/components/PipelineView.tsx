@@ -45,7 +45,7 @@ export function PipelineView({ trace, isStreaming, collapsed, onToggle }: Props)
 
   // ── Expanded view ──────────────────────────────────────────────────────
   return (
-    <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 mb-3 overflow-hidden">
+    <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 mb-3">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-indigo-100">
         <div className="flex items-center gap-2">
@@ -57,6 +57,7 @@ export function PipelineView({ trace, isStreaming, collapsed, onToggle }: Props)
               live
             </span>
           )}
+          <span className="text-[10px] text-indigo-300 italic">· hover nodes for details</span>
         </div>
         {trace.done && (
           <button

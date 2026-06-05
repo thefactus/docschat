@@ -2,7 +2,7 @@
  * Two interchangeable trace drivers.
  *
  * Driver interface:
- *   (question, documentIds, onEvent, onError) => { abort }
+ *   (question, documentIds, history, onEvent, onError) => { abort }
  *
  * SSE driver    — real POST /query/stream, fetch + ReadableStream.
  * Simulated driver — calls POST /query, then replays fake stage events
@@ -16,9 +16,12 @@ import type { QueryResponse } from './api'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+export type HistoryMessage = { role: 'user' | 'assistant'; content: string }
+
 export type TraceDriver = (
   question: string,
   documentIds: string[] | null,
+  history: HistoryMessage[],
   onEvent: (event: ParsedSSEEvent) => void,
   onError: (msg: string) => void,
 ) => { abort: () => void }
@@ -57,7 +60,7 @@ export function parseSSEBuffer(buffer: string): {
 
 // ── SSE driver ────────────────────────────────────────────────────────────
 
-export const sseDriver: TraceDriver = (question, documentIds, onEvent, onError) => {
+export const sseDriver: TraceDriver = (question, documentIds, history, onEvent, onError) => {
   const controller = new AbortController()
 
   const run = async () => {
@@ -67,6 +70,7 @@ export const sseDriver: TraceDriver = (question, documentIds, onEvent, onError) 
       body: JSON.stringify({
         question,
         document_ids: documentIds?.length ? documentIds : null,
+        history,
       }),
       signal: controller.signal,
     })
@@ -106,7 +110,7 @@ export const sseDriver: TraceDriver = (question, documentIds, onEvent, onError) 
 // Calls /query (the verified path) to get authentic answer + sources,
 // then replays fake stage events with realistic timing so the diagram works.
 
-export const simulatedDriver: TraceDriver = (question, documentIds, onEvent, onError) => {
+export const simulatedDriver: TraceDriver = (question, documentIds, history, onEvent, onError) => {
   let aborted = false
   const timers: ReturnType<typeof setTimeout>[] = []
 
@@ -122,6 +126,7 @@ export const simulatedDriver: TraceDriver = (question, documentIds, onEvent, onE
       body: JSON.stringify({
         question,
         document_ids: documentIds?.length ? documentIds : null,
+        history,
       }),
     })
 
@@ -130,14 +135,57 @@ export const simulatedDriver: TraceDriver = (question, documentIds, onEvent, onE
     if (aborted) return
 
     let t = 0
+
+    if (qr.intent === 'greeting' || qr.intent === 'meta') {
+      const plannerEvent: ParsedSSEEvent = {
+        event: 'planner',
+        data: {
+          intent: qr.intent,
+          standalone_query: question,
+          rewritten: false,
+          decomposed: false,
+          sub_queries: [],
+          reason: qr.intent,
+        },
+      }
+      schedule(() => onEvent(plannerEvent), t)
+      t += 120
+
+      const pieces = qr.answer.match(/[\s\S]{1,4}/g) ?? []
+      pieces.forEach((piece, i) => {
+        schedule(() => onEvent({ event: 'token', data: { text: piece } }), t + i * 20)
+      })
+      t += pieces.length * 20 + 80
+
+      schedule(() => onEvent({
+        event: 'done',
+        data: {
+          answer: qr.answer,
+          sources: [],
+          tokens_used: 0,
+          latency_ms: qr.latency_ms,
+          intent: qr.intent,
+        },
+      }), t)
+      return
+    }
+
     const refused = qr.tokens_used === 0
     const maxScore = qr.sources.length > 0 ? Math.max(...qr.sources.map((s) => s.score)) : 0.15
 
     // Planner
-    schedule(() => onEvent({
+    const plannerEvent: ParsedSSEEvent = {
       event: 'planner',
-      data: { decomposed: false, sub_queries: [question], reason: 'simulated' },
-    }), t)
+      data: {
+        intent: 'doc_question',
+        standalone_query: question,
+        rewritten: false,
+        decomposed: false,
+        sub_queries: [question],
+        reason: 'simulated',
+      },
+    }
+    schedule(() => onEvent(plannerEvent), t)
     t += 320
 
     // Retrieval
@@ -176,6 +224,7 @@ export const simulatedDriver: TraceDriver = (question, documentIds, onEvent, onE
           sources: [],
           tokens_used: 0,
           latency_ms: qr.latency_ms,
+          intent: qr.intent,
         },
       }), t)
       return
@@ -203,6 +252,7 @@ export const simulatedDriver: TraceDriver = (question, documentIds, onEvent, onE
         sources: qr.sources,
         tokens_used: qr.tokens_used,
         latency_ms: qr.latency_ms,
+        intent: qr.intent,
       },
     }), t)
   }
