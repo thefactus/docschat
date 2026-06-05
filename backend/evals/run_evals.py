@@ -170,10 +170,11 @@ async def run_item(
     fts_weight: float | None = None,
 ) -> ItemResult:
     scope_ids = resolve_scope(item["scope"]) if "scope" in item else None
+    history = [{"role": m["role"], "content": m["content"]} for m in item.get("history", [])]
 
     with config_override(threshold, vec_weight, fts_weight):
-        chunks = retrieve_with_planning(item["question"], document_ids=scope_ids)
-        gen = await _gen_mod.generate(question=item["question"], chunks=chunks)
+        chunks = retrieve_with_planning(item["question"], document_ids=scope_ids, history=history)
+        gen = await _gen_mod.generate(question=item["question"], chunks=chunks, history=history)
 
     sources = [
         Source(

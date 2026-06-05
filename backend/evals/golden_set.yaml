@@ -82,3 +82,28 @@
 - id: offtopic-recipe
   type: refuse
   question: "Give me a recipe for carbonara."
+
+# ── Multi-turn items ──────────────────────────────────────────────────────────
+# Elliptical follow-ups that require history to be rewritten before retrieval.
+
+- id: multiturn-followup-sick-days
+  type: answerable
+  history:
+    - role: user
+      content: "What are the remote work rules for full-time employees?"
+    - role: assistant
+      content: "Full-time employees may work remotely up to three days per week."
+  question: "And how many sick days do they get?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["10"]
+
+- id: multiturn-followup-carryover
+  type: answerable
+  history:
+    - role: user
+      content: "How many days of paid annual leave do employees get per year?"
+    - role: assistant
+      content: "Employees receive 25 days of paid annual leave per year."
+  question: "How many of those can they carry over?"
+  expect_documents: ["sample.txt"]
+  expect_answer_contains: ["5"]
