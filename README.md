@@ -1,19 +1,14 @@
-# DocChat: Chat With Your Docs
+# DocChat | Chat With Your Docs
 
-A conversational assistant that answers questions grounded in your own documents,
-with citations. Upload PDFs / text / markdown, ask questions in a chat, and watch
-the retrieval pipeline run live.
+DocChat is a small RAG app for asking questions over uploaded documents. It
+supports PDFs, text, and Markdown files, returns cited answers, and shows the
+retrieval pipeline while each answer is being built.
 
-I chose the **Chat With Your Docs** option because it is the smallest useful surface
-that still exposes the hard parts of AI engineering: chunking, hybrid retrieval,
-query rewriting, guardrails, streaming UX, evals, and production trade-offs.
+I chose the Chat With Your Docs option because it is simple to understand, but
+still exercises the important AI engineering pieces: retrieval quality,
+conversation context, guardrails, observability, and evaluation.
 
-This is deliberately a **solid, well-tested core** rather than a feature-maximal
-prototype. The scope cuts are explicit in the limitations section.
-
----
-
-## Author note
+## Author Note
 
 I built DocChat to be small enough to understand quickly, but complete enough to
 show the important parts of a real RAG product. You can upload a couple of
@@ -30,315 +25,188 @@ handled by rewriting follow-up questions into standalone queries before retrieva
 That makes the app feel like chat, but still keeps the retrieval step grounded in
 clear document search.
 
----
+## What It Does
 
-## What it does
-
-- **Upload** PDFs, `.txt`, or `.md` and ask questions about them.
-- **Grounded answers with citations**: every answer cites the file (and page) it came from. If the documents don't contain the answer, it says so instead of guessing.
-- **Real chat**: follow-up questions work. "And how many can they carry over?" is understood in the context of the previous turn.
-- **Live pipeline view**: a toggleable diagram + dev log that shows every stage (query planning, hybrid retrieval, fusion, the confidence guardrail, generation) running in real time, with the answer streaming in token by token.
-- **Document scoping**: restrict a question to specific documents.
-
----
+- Upload PDFs, text, or Markdown files.
+- Ask natural questions about the uploaded documents.
+- Get answers with file and page citations.
+- Ask follow-up questions without repeating the full context.
+- Watch the live pipeline trace for planning, retrieval, fusion, guardrail, and generation.
+- Scope a question to selected documents.
+- Refuse off-topic questions when the document evidence is too weak.
 
 ## Screenshots
 
 ![A grounded answer with the live pipeline trace and a page citation.](screenshots/01-answer-with-pipeline.png)
-*A grounded answer with the live pipeline trace and a page citation.*
 
 ![The pipeline trace up close.](screenshots/02-pipeline-trace.png)
-*The pipeline trace up close — every stage with its real decision, scores, and timing.*
 
 ![An off-topic question is refused.](screenshots/03-guardrail-refusal.png)
-*An off-topic question: the guardrail refuses and the generation step is skipped.*
 
----
+## Quick Start
 
-## Quick start
+Requirements
 
-**Requirements:** Docker + an OpenAI API key.
+- Docker
+- OpenAI API key
 
 ```bash
 cp .env.example .env
-# edit .env and set OPENAI_API_KEY=sk-...
+# edit .env and set OPENAI_API_KEY
 
 docker compose up --build
 ```
 
-- Frontend: <http://localhost:3000>
-- Backend API: <http://localhost:8000> (`/health`, `/ingest`, `/documents`, `/query`, `/query/stream`)
+App URLs
 
-The app boots without a key (`/health` responds), but `/ingest` and `/query` require `OPENAI_API_KEY` to be set.
+- Frontend at <http://localhost:3000>
+- Backend API at <http://localhost:8000>
+- Health check at <http://localhost:8000/health>
 
-Then open the frontend, drag a document into the sidebar, and ask a question.
+Then open the frontend, upload a document, and ask a question.
 
-Useful smoke-test prompts:
+Useful demo prompts
 
-- `hi`: should short-circuit as a greeting, with no retrieval or generation.
-- `What is this app?`: should short-circuit as a meta question.
-- Ask a document question, then a follow-up like `and what about the carryover?`
-  to exercise history-aware rewriting.
-- Ask an off-topic question like `Give me a recipe for carbonara.`: the guardrail
-  should refuse and skip the LLM node.
-
----
-
-## Validation commands
-
-```bash
-# frontend compile/type gate
-docker compose build frontend
-
-# backend lint, from a local/dev Python environment
-pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-(cd backend && python -m ruff check .)
-
-# planner unit tests; pytest is also available in the backend container
-docker compose exec backend python -m pytest tests/test_planner_intent.py
-
-# full backend test suite, from the local/dev environment with testcontainers
-(cd backend && python -m pytest)
+```text
+Hello
+What project options does the assignment ask me to choose from?
+And what does it say I should submit?
+Give me a recipe for carbonara.
 ```
-
----
 
 ## Architecture
 
-Three containers via `docker compose`:
+```text
+Frontend, Next.js
+  |
+  | HTTP and SSE
+  v
+Backend, FastAPI
+  |
+  | stores chunks, vectors, and full-text index
+  v
+Postgres with pgvector
 
+OpenAI is used for embeddings, planning, and generation.
 ```
-┌───────────────┐      ┌──────────────────────────────┐      ┌──────────────────┐
-│  Frontend     │      │  Backend (FastAPI)           │      │  Postgres 16     │
-│  Next.js 14   │ ───▶ │                              │ ───▶ │  + pgvector      │
-│  (App Router) │      │  ingestion · retrieval ·     │      │                  │
-│  Pipeline UI  │ ◀─── │  generation · guardrail      │ ◀─── │  vector + FTS    │
-└───────────────┘ SSE  └──────────────┬───────────────┘      └──────────────────┘
-                                       │
-                                       ▼
-                                  OpenAI API
-                          (embeddings + chat, streaming)
-```
 
-**Request flow for a question (`POST /query` / `/query/stream`):**
+Question flow
 
-1. **Query planning** (`retrieval/planner.py`): one LLM call classifies intent
-   (`greeting` / `meta` / `doc_question`) and, using the recent conversation history,
-   rewrites the message into a self-contained query (and optionally decomposes it into
-   sub-queries). Greetings/meta short-circuit here: no retrieval, no cost.
-2. **Hybrid retrieval** (`retrieval/{vector,fts}.py`): per (sub-)query, runs **vector
-   search** (pgvector cosine) and **full-text search** (Postgres FTS / BM25-style) in
-   parallel.
-3. **Fusion** (`retrieval/fusion.py`): min-max normalizes each arm's scores and combines
-   them with configurable weights (default 0.7 vector / 0.3 FTS), then truncates to `top_k`.
-4. **Confidence guardrail** (`generation/openai.py`): if the best raw cosine score is below
-   `low_confidence_threshold` (0.20), it refuses instead of generating.
-5. **Generation**: a grounded prompt (answer only from the retrieved chunks, cite sources,
-   refuse if insufficient) with recent history for conversational coherence. `/query/stream`
-   streams the answer token by token over SSE.
+1. The planner classifies the message as greeting, meta, or document question.
+2. For document questions, it rewrites follow-ups into standalone questions.
+3. Retrieval runs vector search and Postgres full-text search.
+4. Fusion ranks the candidates and keeps the best chunks.
+5. The guardrail checks whether the strongest match is above the confidence threshold.
+6. Generation answers using only the retrieved chunks and returns citations.
 
-The streaming endpoint (`/query/stream`) mirrors the plain endpoint and is used by
-the live pipeline view. `/query` remains the simple request/response path and the
-fallback for environments where streaming is unavailable.
+Greeting and meta questions short-circuit. They do not run retrieval or generation.
 
----
+## RAG Decisions
 
-## RAG / LLM approach & decisions
-
-| Concern | Choice | Why |
+| Area | Choice | Why |
 |---|---|---|
-| **Embeddings** | OpenAI `text-embedding-3-small` (1536-dim) | Cheap, current, good enough; 1536 dims keep the schema light. |
-| **Generation / planner** | OpenAI `gpt-4.1-mini` (configurable via env) | Small, fast model sized to the task; same provider as embeddings. |
-| **Vector store** | Postgres + pgvector | One datastore for relational + vector + full-text: no separate vector DB to operate. |
-| **Orchestration** | Hand-written (no LangChain) | The pipeline is small and explicit; a framework would add indirection without payoff. |
+| LLM | OpenAI `gpt-4.1-mini` | Fast enough for planning and answer generation. |
+| Embeddings | OpenAI `text-embedding-3-small` | Good quality for the scope and inexpensive. |
+| Vector store | Postgres with pgvector | One database for documents, vectors, and full-text search. |
+| Retrieval | Vector search plus Postgres full-text search | Semantic search handles meaning. Full-text helps with exact terms. |
+| Orchestration | Custom pipeline | The flow is small enough to keep explicit. |
 
-**Chunking.** Character-based, ~1500 chars with 300-char overlap, split on paragraph ->
-sentence boundaries (not fixed cuts). Character-based was a deliberate choice for
-simplicity and determinism: no coupling to a specific tokenizer; the quality lever is
-boundary-aware splitting, not the unit of measurement. PDFs are chunked **per page** so
-every chunk carries its page number, which is what makes the citations accurate.
+Chunking is character based, around 1500 characters with overlap. PDFs are split
+per page so citations can include page numbers.
 
-**Retrieval: hybrid.** Vector search handles semantic similarity; full-text (BM25-style)
-handles exact terms, names, and acronyms. They're fused with weighted, min-max-normalized
-scores. Min-max preserves the *relative spacing* of candidates within a result set (better
-than rank-only fusion like RRF) while keeping the configurable weights meaningful.
+Conversation memory is stateless on the backend. The frontend sends the last few
+chat messages with each request. The planner uses that history to rewrite a
+follow-up like `And what does it say I should submit?` into a standalone query
+before retrieval.
 
-**Context management.** Conversation history is bounded (last ~6 turns) and used in two
-places: the planner rewrites elliptical follow-ups into standalone queries (so *retrieval*
-has a topic anchor, not just generation), and generation gets the recent turns for coherence.
-History is held by the frontend and sent with each request: the backend is stateless.
+The confidence guardrail uses the best raw vector score. If the score is below
+`0.20`, the app refuses instead of calling the generation model.
 
-**Guardrails.** Two layers: (1) a confidence gate on the raw cosine score before generation,
-and (2) the grounded prompt itself, which refuses when the context is insufficient. A refused
-answer returns empty sources and zero tokens.
+## Testing And Evaluation
 
-**Quality / evaluation.** A token-aware eval harness (`backend/evals/`) with a golden set
-measures retrieval hit-rate, citation accuracy, a lexical answer-match proxy, refusal accuracy,
-and scoping correctness. It's how the guardrail threshold was tuned (see below) rather than
-guessed. See **Testing & evaluation**.
+Validation commands
 
-**Observability.** Structured logging (`structlog`) on every stage; the live pipeline view is
-end-user-facing observability: it surfaces each stage's real decision, scores, and timing.
+```bash
+docker compose build frontend
 
-**Why no agent framework?** The project uses one planner call plus an explicit retrieval and
-generation pipeline. That shape is small enough that a framework like LangGraph or LangChain
-would add abstraction before it adds leverage. If I later added tool use, long-running workflows,
-or resumable multi-step tasks, I would revisit that decision.
+pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+(cd backend && python -m ruff check .)
 
----
-
-## Testing & evaluation
-
-**Unit / integration tests**:
-
-- `test_chunking.py`, `test_fusion.py`, `test_evals.py`, `test_planner_intent.py`,
-  `test_stream_utils.py`: pure functions, no DB, no API.
-- `test_db.py`: real pgvector via testcontainers with **fake embeddings**, exercising the
-  SQL layer (the `::vector` cast, the FTS `numnode` guard, scoping). Token-free on purpose:
-  it tests the wiring, not the model.
-
-**Eval harness** (`python -m evals.run_evals`, needs the DB + an API key):
-
-```
-DocChat eval — 15 items (12 answerable, 3 refuse)  top_k=6
-  retrieval_hit_rate       12/12    1.00
-  citation_accuracy         3/3     1.00
-  answer_match (partial)    mean 1.00   n=12
-  refusal_accuracy          3/3 refuse + 12/12 answerable   1.00
-  scoping_correctness       1/1     1.00
+docker compose exec backend python -m pytest tests/test_planner_intent.py
+(cd backend && python -m pytest)
 ```
 
-**Tuning the guardrail threshold with data.** The harness can sweep the threshold. The score
-distribution showed off-topic questions top out well below legitimate document questions, so a
-threshold sweep confirmed the safe band:
+The backend includes unit tests for chunking, fusion, planner intent parsing, SSE
+utilities, eval scoring, and database behavior with fake embeddings.
 
-```
- threshold   ret_hit   refusal   ans_match
-      0.05      1.00      1.00        0.95
-      0.20      1.00      1.00        1.00
-      0.30      1.00      1.00        0.95
-      0.40      1.00      0.71        0.73   <- legit questions wrongly refused
-```
+There is also an eval harness in `backend/evals`. It uses a golden set to check
+retrieval hit rate, citation accuracy, answer match, refusal behavior, and document
+scoping. I used it to tune the `0.20` confidence threshold instead of choosing it
+by feel.
 
-`0.30` sat only ~0.01 above the weakest legitimate question, so I lowered the threshold to
-**0.20** to center it in the gap. That decision came from the eval, not intuition.
+## Key Technical Decisions
 
----
+I used FastAPI because it keeps the API small and readable. I used Postgres with
+pgvector because it avoids running a separate vector database for this scope. I
+used OpenAI for both embeddings and generation because it made the model layer
+simple and consistent.
 
-## Key technical decisions
+I did not use LangChain or LangGraph. For this project, the pipeline is easier to
+review when it is written directly. If I added long-running agent workflows or
+tool use, I would revisit that decision.
 
-I chose tools I know well and that keep the system simple, so my time went into the quality
-of the RAG rather than fighting the stack.
+I kept chat history in the frontend instead of adding server-side sessions. This
+keeps the demo simple and makes token usage predictable. In production, I would
+persist conversations and add smarter memory selection or summarization.
 
-- **FastAPI**: the minimum needed for a clean, typed API, no boilerplate.
-- **Postgres + pgvector**: the choice that saved the most complexity. Instead of running a
-  separate vector database, Postgres does relational + vector + full-text in one place, which
-  gave me hybrid retrieval without operating a second datastore. I also had prior experience
-  with it.
-- **OpenAI**: what I've been using for AI systems; embeddings and generation from one provider,
-  with native streaming.
+## Engineering Standards
 
-If the corpus grew large, I'd revisit a dedicated vector DB and a reranking stage. But for this
-scope, one well-understood datastore was the right call.
+Followed
 
-The main architectural choice was to keep the backend stateless for chat memory. The frontend
-sends the last few non-error turns with each request. That keeps the demo simple and avoids
-session infrastructure, while still exercising the important behavior: retrieval sees rewritten,
-self-contained follow-up questions instead of ambiguous fragments.
+- Docker Compose for one-command local setup.
+- Typed API models with Pydantic.
+- TypeScript in the frontend.
+- Ruff linting for backend code.
+- Unit and integration tests where they give clear value.
+- Eval harness for RAG quality.
+- Structured logging with `structlog`.
+- Conventional commits during development.
+- Secrets kept out of the repository.
 
----
+## AI-Assisted Development
 
-## Engineering standards
+I started from a system design and used AI agents to build against it. One agent
+acted as an orchestrator that planned and reviewed the work, and another wrote the
+code. I made the decisions about the features and the system design, and the agents
+helped me implement them.
 
-**Followed:** containerized one-command setup; typed Python (Pydantic) and TypeScript; linting
-(ruff) and a compile/type gate in CI; token-free unit + integration tests; an eval harness as a
-first-class quality discipline; structured logging; conventional commits; secrets kept out of the
-repo (`.env` gitignored, `.env.example` only).
+## Production Plan
 
-**Skipped (and acknowledged):** no auth / multi-tenancy; no persistent sessions (chat history is
-client-side and ephemeral); no rate limiting; connection-per-request instead of a pool; no queued
-ingestion for large batches; the eval's LLM-judge tier exists but is opt-in. These are deliberate
-scope cuts for a take-home, not oversights.
+To productionize this on AWS, GCP, Azure, Cloudflare, or Vercel, I would add
+these pieces.
 
----
+- Managed Postgres with pgvector.
+- Connection pooling.
+- Auth and tenant isolation.
+- Server-side conversation sessions.
+- Secrets manager and key rotation.
+- Queued ingestion for larger files and batches.
+- Embedding cache.
+- Reranking for larger document sets.
+- OpenTelemetry traces and dashboards for latency, tokens, retrieval scores, and refusal rate.
+- CI gates for lint, tests, Docker build, and deployment.
 
-## How I used AI tools
+## What I Would Improve Next
 
-I treated development as a **team of agents that I orchestrated**, not as autocomplete.
+- Add persisted conversations with `conversation_id`.
+- Add a reranking stage for larger document sets.
+- Make the eval set harder and more diverse.
+- Add a document delete action in the UI.
+- Add production observability dashboards.
 
-- **I** owned the system design, the features, the improvements, and the overall plan: every
-  product and architecture decision was mine.
-- An **orchestrator agent** (Claude Code) wrote the plan with me and ran reviews.
-- A **coder agent** (Claude Code) implemented.
-- A third agent (**Codex**) added an independent review pass.
+## Known Limitations
 
-The rule that mattered most: **nothing was "done" until it actually ran.** The orchestrator didn't
-trust "the tests pass". It brought up `docker compose`, ran the eval, and exercised the app. That
-caught bugs static review missed: a committed syntax error that broke boot, a pgvector type cast, a
-non-existent SQL function. All were invisible to the unit tests, and all were found only by running it.
-
-**Do's:** review against criteria, not vibes; verify by running; isolate new features from verified
-ones. **Don'ts:** accept "done" without executing; let an agent make product decisions.
-
-That workflow was useful, but only because I kept the bar concrete: code review, unit tests,
-Docker builds, eval runs, and browser smoke tests. The AI agents accelerated implementation;
-they did not replace engineering judgment.
-
----
-
-## What I'd do differently with more time
-
-- **Reranking stage**: a cross-encoder to re-score retrieved candidates for precision. I
-  *deliberately didn't* add one: the eval showed strong retrieval recall (1.0) on this corpus, so it
-  wasn't justified. With a larger corpus where ordering matters more, it would be the next lever.
-- **A more discriminating eval set**: the current golden set passes at ~1.0, so it doesn't separate
-  good from better. Harder cases (ambiguous questions, exact-term / FTS-only lookups, near-miss
-  off-topic) would let the eval catch quality regressions and justify tuning by contrast.
-- **Resumable chats**: conversation history is currently held in the frontend and lost on refresh.
-  I'd persist sessions server-side (`conversation_id`) so chats survive reloads and can be resumed.
-- **Productionizing**: see below.
-
----
-
-## Demo notes
-
-The live pipeline is intentionally visible because it makes the system easier to evaluate:
-
-- greeting/meta turns show the planner short-circuit and dim downstream nodes;
-- normal document questions show retrieval, fusion, guardrail, generation, and citations;
-- follow-ups show the planner rewrite state;
-- low-confidence questions show the guardrail refuse path and skip generation.
-
-This is also how I would debug the product with a stakeholder: not by explaining RAG abstractly,
-but by showing which stage made which decision.
-
----
-
-## Productionizing on a hyperscaler
-
-To run this on AWS / GCP / Azure / Cloudflare:
-
-- **Compute:** containers on a managed runtime (ECS/Fargate, Cloud Run, or k8s); the frontend as a
-  Next.js standalone build on the same or on Vercel/Cloudflare.
-- **Database:** managed Postgres with the pgvector extension (e.g. RDS / Cloud SQL / Aurora), with a
-  connection pool (PgBouncer) instead of the current connection-per-request.
-- **Secrets:** a secrets manager + rotation instead of `.env`.
-- **Scale & cost:** batch/queue ingestion for large uploads; cache embeddings; an HNSW index is
-  already created, but I'd tune it and consider a dedicated vector store if the corpus grows; add a
-  reranking stage where the data justifies it.
-- **Reliability & security:** auth + multi-tenancy, per-tenant rate limiting, input/file validation
-  hardening, and an output-validation guardrail.
-- **Observability:** ship the structured logs to a backend (e.g. OpenTelemetry -> a tracing/metrics
-  stack), with dashboards for latency, token cost, retrieval scores, and refusal rate.
-- **CI/CD:** the existing lint + test gates run on GitHub Actions; add the integration suite and a
-  gated deploy.
-
----
-
-## Known limitations
-
-- **Enumeration / completeness**: for "list every passage that mentions X", retrieval surfaces the
-  relevant chunks but generation tends to return one and phrase it as definitive. The fix is intent
-  routing (a lexical filter for exhaustive term lookup); not implemented.
-- **No persistent storage of chats** (see above).
-- **Eval corpus** references the sample documents; the larger PDFs used in testing aren't committed.
+- Chat history is currently held in the browser and lost on refresh.
+- There is no authentication or multi-user isolation.
+- Exhaustive questions like "list every mention of X" are not handled as a special mode.
+- The set of evaluation documents is small and should be expanded for a real production system.
