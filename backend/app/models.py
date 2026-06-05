@@ -1,4 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+class HistoryMessage(BaseModel):
+    role: Literal['user', 'assistant']
+    content: str
 
 
 class IngestResponse(BaseModel):
@@ -19,6 +26,7 @@ class ChunkSource(BaseModel):
 class QueryRequest(BaseModel):
     question: str
     document_ids: list[str] | None = None
+    history: list[HistoryMessage] = []
 
 
 class QueryResponse(BaseModel):
@@ -26,6 +34,7 @@ class QueryResponse(BaseModel):
     sources: list[ChunkSource]
     tokens_used: int
     latency_ms: float
+    intent: str = 'doc_question'
 
 
 class DocumentInfo(BaseModel):

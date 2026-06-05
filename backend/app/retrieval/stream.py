@@ -1,10 +1,11 @@
 """Async SSE pipeline for POST /query/stream.
 
-Runs the same retrieval + generation pipeline as /query but as an async generator
-that emits one SSE event per stage. All pipeline primitives (planner, retrieve,
-fusion, guardrail, generate) are reused — only the orchestration is new.
-
 /query is never touched by this module.
+
+Event sequences:
+  greeting/meta: planner → token* → done  (no retrieval)
+  doc_question:  planner → retrieval* → fusion → guardrail → generating → token* → done
+  error on any unhandled exception.
 """
 import asyncio
 import json
@@ -21,34 +22,57 @@ _REFUSAL = (
     " to answer this question."
 )
 
+_TOKEN_CHUNK = 4  # characters per synthetic token event for canned messages
+
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def query_stream(question: str, document_ids: list[str] | None):
-    """Async generator that yields SSE-formatted strings for /query/stream.
-
-    Emits events: planner, retrieval (one per sub-query), fusion, guardrail,
-    generating, token (one per LLM delta), done.  On any exception: error.
-    """
+async def query_stream(
+    question: str,
+    document_ids: list[str] | None,
+    history: list[dict] | None = None,
+):
+    """Async generator yielding SSE-formatted strings for /query/stream."""
     t0 = time.perf_counter()
+    history = history or []
 
     try:
-        # ── Planner ────────────────────────────────────────────────────────
-        from app.retrieval.planner import plan_details
+        # ── Planner: intent classification + query rewrite ─────────────────
+        from app.retrieval.planner import CANNED, plan_details
 
-        plan = await asyncio.to_thread(plan_details, question)
+        plan = await asyncio.to_thread(plan_details, question, history)
         yield _sse(
             "planner",
             {
+                "intent": plan.intent,
+                "standalone_query": plan.standalone_query,
+                "rewritten": plan.rewritten,
                 "decomposed": plan.decomposed,
                 "sub_queries": plan.queries,
                 "reason": plan.reason,
             },
         )
 
-        # ── Retrieval (per sub-query) ───────────────────────────────────────
+        # ── Short-circuit for greeting / meta ──────────────────────────────
+        if plan.intent in CANNED:
+            canned = CANNED[plan.intent]
+            for i in range(0, len(canned), _TOKEN_CHUNK):
+                yield _sse("token", {"text": canned[i : i + _TOKEN_CHUNK]})
+            yield _sse(
+                "done",
+                {
+                    "answer": canned,
+                    "sources": [],
+                    "tokens_used": 0,
+                    "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                    "intent": plan.intent,
+                },
+            )
+            return
+
+        # ── doc_question: full retrieval pipeline ──────────────────────────
         from app.retrieval.pipeline import retrieve_detailed
 
         seen_ids: set[str] = set()
@@ -70,17 +94,12 @@ async def query_stream(question: str, document_ids: list[str] | None):
                     seen_ids.add(chunk.id)
                     all_chunks.append(chunk)
 
-        # Merge + trim identical to retrieve_with_planning
         all_chunks.sort(key=lambda c: c.raw_vec_score, reverse=True)
         final_chunks = all_chunks[: settings.retrieval_top_k]
 
-        # ── Fusion summary ──────────────────────────────────────────────────
+        # ── Fusion summary ─────────────────────────────────────────────────
         top_sources = [
-            {
-                "filename": c.filename,
-                "page": c.page,
-                "score": round(c.raw_vec_score, 4),
-            }
+            {"filename": c.filename, "page": c.page, "score": round(c.raw_vec_score, 4)}
             for c in final_chunks[:5]
         ]
         yield _sse(
@@ -91,7 +110,7 @@ async def query_stream(question: str, document_ids: list[str] | None):
             },
         )
 
-        # ── Guardrail ───────────────────────────────────────────────────────
+        # ── Guardrail ──────────────────────────────────────────────────────
         max_score = max((c.raw_vec_score for c in final_chunks), default=0.0)
         proceed = bool(final_chunks) and max_score >= settings.low_confidence_threshold
         yield _sse(
@@ -111,11 +130,12 @@ async def query_stream(question: str, document_ids: list[str] | None):
                     "sources": [],
                     "tokens_used": 0,
                     "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                    "intent": "doc_question",
                 },
             )
             return
 
-        # ── Generating ──────────────────────────────────────────────────────
+        # ── Generating ─────────────────────────────────────────────────────
         yield _sse("generating", {"chunks_used": len(final_chunks)})
 
         from app.generation.openai import generate_stream
@@ -123,7 +143,7 @@ async def query_stream(question: str, document_ids: list[str] | None):
         answer_parts: list[str] = []
         tokens_used = 0
 
-        async for evt in generate_stream(question, final_chunks):
+        async for evt in generate_stream(plan.standalone_query, final_chunks, history):
             if evt["type"] == "token":
                 answer_parts.append(evt["text"])
                 yield _sse("token", {"text": evt["text"]})
@@ -144,6 +164,7 @@ async def query_stream(question: str, document_ids: list[str] | None):
                 "sources": sources,
                 "tokens_used": tokens_used,
                 "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "intent": "doc_question",
             },
         )
 

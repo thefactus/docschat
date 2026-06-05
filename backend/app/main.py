@@ -96,15 +96,29 @@ def documents():
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     from app.generation.openai import generate
-    from app.retrieval.planner import retrieve_with_planning
+    from app.retrieval.planner import CANNED, plan_details, retrieve_with_plan
 
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     t0 = time.perf_counter()
+    history = [m.model_dump() for m in request.history]
     log.info("query.start", question=request.question[:120])
 
-    chunks = retrieve_with_planning(request.question, document_ids=request.document_ids)
+    plan = plan_details(request.question, history=history)
+
+    # ── Greeting / meta short-circuit ─────────────────────────────────────
+    if plan.intent in CANNED:
+        return QueryResponse(
+            answer=CANNED[plan.intent],
+            sources=[],
+            tokens_used=0,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+            intent=plan.intent,
+        )
+
+    # ── doc_question: retrieve → generate ─────────────────────────────────
+    chunks = retrieve_with_plan(plan, document_ids=request.document_ids)
 
     if not chunks:
         return QueryResponse(
@@ -115,32 +129,36 @@ async def query(request: QueryRequest):
             sources=[],
             tokens_used=0,
             latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+            intent="doc_question",
         )
 
-    response = await generate(question=request.question, chunks=chunks)
+    response = await generate(
+        question=plan.standalone_query,
+        chunks=chunks,
+        history=history,
+    )
 
     latency = round((time.perf_counter() - t0) * 1000, 1)
     log.info(
         "query.done",
         question=request.question[:120],
+        intent=plan.intent,
+        rewritten=plan.rewritten,
         chunks_retrieved=len(chunks),
         tokens_used=response.tokens_used,
         latency_ms=latency,
     )
 
-    # tokens_used == 0: low-confidence guardrail fired — return no sources.
-    # raw_vec_score == 0.0: FTS-only chunk with no vector signal — omit from sources
-    # but keep in generation context (the LLM can still use it, just don't cite it).
-    if response.tokens_used == 0:
-        sources = []
-    else:
-        sources = [c.to_source() for c in chunks if c.raw_vec_score > 0.0]
+    sources = [] if response.tokens_used == 0 else [
+        c.to_source() for c in chunks if c.raw_vec_score > 0.0
+    ]
 
     return QueryResponse(
         answer=response.answer,
         sources=sources,
         tokens_used=response.tokens_used,
         latency_ms=latency,
+        intent=plan.intent,
     )
 
 
@@ -151,8 +169,10 @@ async def query_stream_endpoint(request: QueryRequest):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    history = [m.model_dump() for m in request.history]
+
     return StreamingResponse(
-        query_stream(request.question, request.document_ids),
+        query_stream(request.question, request.document_ids, history),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
